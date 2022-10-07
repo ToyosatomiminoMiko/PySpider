@@ -1,9 +1,9 @@
 import threading
-import time
+# import time
 import tools
 from json import loads
 import requests as req
-from lxml import etree
+# from lxml import etree
 
 headers = {
     'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
@@ -13,7 +13,7 @@ headers = {
 # 视频列表
 video_list = []
 # 封面列表
-image_dict = {}  # TODO
+image_dict = {}
 
 
 class User:
@@ -50,7 +50,6 @@ class Video:
 def get_images(urls: dict, hds: dict):
     img: tuple = urls.popitem()
     if tools.download_image(img, headers=hds, path="./video_image") != 200:
-        urls.append(img)
         urls[img[0]] = img[1]
 
 
@@ -58,7 +57,7 @@ def get_images(urls: dict, hds: dict):
 if __name__ == '__main__':
     # 获取视频列表
     # 收藏夹最大页数 在html文件中无法获取
-    pn = 1  # TODO
+    pn = 1
     while True:
         # 目标收藏夹
         favorites_id = "https://space.bilibili.com/430965590/favlist?fid=1000928790&ftype=create"
@@ -91,8 +90,10 @@ if __name__ == '__main__':
 
     # 提取视频封面url
     for video_img in video_list:
+        # 排除掉无效视频
+        if video_img.title == '已失效视频':
+            continue
         image_dict[video_img.get_video_bv()] = video_img.get_image_url()
-        # image_list.append(video_img.get_image_url())
 
     # 下载封面
 
@@ -108,4 +109,3 @@ if __name__ == '__main__':
     for t in thread_list:
         # 等待线程结束
         t.join()
-
