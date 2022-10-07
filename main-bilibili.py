@@ -99,7 +99,6 @@ if __name__ == '__main__':
 
     # 线程列表
     thread_list = []
-    # for i in image_list:
     while len(image_dict):
         # 分配任务
         t = threading.Thread(target=get_images, args=(image_dict, headers))
