@@ -1,14 +1,29 @@
 import threading
+from json import loads
+
+import redis
+import requests as req
+
 # import time
 import tools
-from json import loads
-import requests as req
+
 # from lxml import etree
 
 headers = {
     'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
     (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36 Edg/105.0.1343.53'
 }
+
+# Redis缓存
+R = redis.Redis(
+    host='124.223.13.92',
+    port=6379,
+    password='19260817',
+    charset='utf-8',
+    decode_responses=True,  # 使结果不为二进制
+    db=0
+)
+
 
 # 视频列表
 video_list = []
@@ -27,6 +42,12 @@ class User:
     def get_id(self) -> int:
         return self.id
 
+    # 缓存用户信息
+    def download_to_redis(self, r: redis.Redis):
+        # 'hmset()'已弃用(悲)
+        r.hset(str(self.id), 'name', self.name)
+        tools.info(f"loaded:{r.hgetall('test')}")
+
 
 class Video:
     def __init__(self, d: dict):
@@ -36,6 +57,7 @@ class Video:
         self.image: str = d["cover"]
 
     def __str__(self) -> str:
+        # 序列化
         return f'{self.upper.get_name()}({self.upper.get_id()}):"{self.title}"[{self.bv_id}]:{self.image}'
 
     # 返回封面url
@@ -46,10 +68,23 @@ class Video:
     def get_video_bv(self) -> str:
         return self.bv_id
 
+    # 缓存视频信息到Redis
+    def download_to_redis(self, r) -> None:  # TODO
+        # 还需添加用户信息的字段 'hmset()'需改为'hset()'
+        r.hmset(str(self.bv_id), {'title': self.title, 'image': self.image})
+        self.upper.download_to_redis(r)
+
 
 def get_images(urls: dict, hds: dict):
     img: tuple = urls.popitem()
-    if tools.download_image(img, headers=hds, path="./video_image") != 200:
+    # 下载到指定的文件夹
+
+    # if tools.download_image(img, headers=hds, path="./video_image") != 200:
+    #     urls[img[0]] = img[1]
+
+    try:
+        tools.download_image(img, headers=hds, path="./video_image")
+    except:  # TODO
         urls[img[0]] = img[1]
 
 
@@ -60,7 +95,7 @@ if __name__ == '__main__':
     pn = 1
     while True:
         # 目标收藏夹
-        favorites_id = "https://space.bilibili.com/430965590/favlist?fid=1000928790&ftype=create"
+        favorites_id = "https://space.bilibili.com/430965590/favlist?fid=999903590&ftype=create"
         # 收藏夹视频列表api参数
         payload = {'media_id': f'{favorites_id.split("?")[1].split("&")[0].split("=")[1]}',
                    'pn': str(pn), 'ps': '20', 'keyword': '', 'order': 'mtime',
@@ -84,6 +119,9 @@ if __name__ == '__main__':
         pn += 1
         for video in json_dist['data']['medias']:
             v = Video(video)
+            # video - redis
+            v.download_to_redis(R)
+
             tools.info(v)
             video_list.append(v)
             del v
