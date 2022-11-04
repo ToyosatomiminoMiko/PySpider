@@ -70,7 +70,9 @@ class Video:
     # 缓存视频信息到Redis
     def download_to_redis(self, r) -> None:  # TODO
         # 还需添加用户信息的字段 'hmset()'需改为'hset()'
-        r.hmset(str(self.bv_id), {'title': self.title, 'image': self.image})
+        # r.hmset(str(self.bv_id), {'title': self.title, 'image': self.image})
+        r.hsetnx(str(self.bv_id), 'title', self.title)
+        r.hsetnx(str(self.bv_id), 'image', self.image)
         self.upper.download_to_redis(r)
 
 
