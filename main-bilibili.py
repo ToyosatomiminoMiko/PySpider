@@ -46,7 +46,6 @@ class User:
     def download_to_redis(self, r: redis.Redis):
         # 'hmset()'已弃用(悲)
         r.hset(str(self.id), 'name', self.name)
-        tools.info(f"loaded:{r.hgetall('test')}")
 
 
 class Video:
