@@ -6,14 +6,16 @@
 1. 爬取豆瓣上的电影
 2. 保存数据到MySQL
 """
-import time
-
-import requests
 # from xml.etree.ElementTree import Element, tostring, fromstring
 import threading
-from lxml import etree
-import tools
+import time
 from json import loads
+import typing
+import requests
+from lxml import etree
+
+import psql_test
+import tools  # --> readme.md
 
 headers = {
     'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
@@ -24,6 +26,9 @@ headers = {
 movie_list = []
 # 电影信息保存
 movie_info = {}
+
+# 新建数据库连接
+psql_conn = psql_test.connect_db()
 
 
 # 数据清洗
@@ -44,6 +49,7 @@ class AggregateRating:
     """
     电影评分
     """
+
     def __init__(self, d: dict):
         self.rating_count: int = int(d['ratingCount'])  # 评分数
         self.best_rating: int = int(d['bestRating'])  # 最高分
@@ -62,6 +68,7 @@ class Person:
     """
     人物
     """
+
     def __init__(self, d: dict):
         self.name: str = d['name']  # 姓名
         self.id: int = int(d['url'].split('/')[2])
@@ -72,29 +79,37 @@ class Person:
     def save_data(self, name: str):
         self.name = name
 
+    def save_to_sql(self, connect: object):
+        cur_p = connect.cursor()
+        print(f'SQL: INSERT INTO ({self.id},{self.name})')
+        cur_p.execute(f"INSERT INTO person (person_id, name)\
+        VALUES ('{self.id}','{self.name}')\
+        ON conflict(person_id) do nothing;")
+        cur_p.close()
+
 
 class Movie:
     """
     这是单个的电影
     通过id获取v其信息
     """
+
     def __init__(self, m_id: str):
         self.movie_info = {}  # from get_data
         self.id: int = int(m_id)
         self.title: str = ''  # 标题
         self.image_url: str = ''  # 封面路径
-        self.director: list = []  # 导演
-        self.author: list = []  # 编剧
-        self.actor: list = []  # 演员
+        self.director: list[int] = []  # 导演
+        self.author: list[int] = []  # 编剧
+        self.actor: list[int] = []  # 演员
         self.date_published: str = ''  # 上映时间
         self.genre: str = ''  # 类别
         self.duration: str = ''  # 时长
         self.description: str = ''  # 简介
         self.aggregate_rating: object = AggregateRating  # 评分
 
+    # 从网络上请求数据
     def get_data(self, hds):
-        # print(f'https://movie.douban.com/subject/{self.id}/?from=showing')
-
         r = requests.get(
             url=f'https://movie.douban.com/subject/{self.id}/?from=showing',
             headers=hds
@@ -103,11 +118,12 @@ class Movie:
         movie_html = etree.HTML(r.text)
 
         # info
-        self.movie_info = loads(tools.replace(movie_html.xpath('//script[@type="application/ld+json"]/text()')[0], "\n", ""), )
+        self.movie_info = loads(
+            tools.replace(movie_html.xpath('//script[@type="application/ld+json"]/text()')[0], "\n", ""), )
         del r, movie_html
         tools.info(self.movie_info)
 
-    def save_data(self):
+    def save_data(self) -> tuple:
         self.title = self.movie_info['name']
         print("title:", self.title)
 
@@ -117,19 +133,23 @@ class Movie:
         self.image_url = self.movie_info['image']
         print("image_url:", self.image_url)
 
-        self.director = parse(Person, self.movie_info['director'])
+        director_list: list[Person] = parse(Person, self.movie_info['director'])
+        for p in director_list:
+            self.director.append(p.id)
         print("director:", self.director)
 
-        self.author = parse(Person, self.movie_info['author'])
+        author_list: list[Person] = parse(Person, self.movie_info['author'])
+        for p in author_list:
+            self.author.append(p.id)
         print("author:", self.author)
 
-        self.actor = parse(Person, self.movie_info['actor'])
-        # print('actor:', self.actor[0])
+        actor_list: list[Person] = parse(Person, self.movie_info['actor'])
+        for p in actor_list:
+            self.actor.append(p.id)
         print('actor:', self.actor)
 
         self.movie_info['aggregateRating']['id'] = self.id  # 在评分中标注电影的id
         self.aggregate_rating = parse(AggregateRating, [self.movie_info['aggregateRating']])
-        # print('aggregate_rating:', self.aggregate_rating[0])
         print('aggregate_rating:', self.aggregate_rating)
 
         self.date_published = self.movie_info['datePublished']
@@ -144,9 +164,34 @@ class Movie:
         self.description = self.movie_info['description']
         print("description:", self.description)
 
+        return (  # 返回人物信息 在...实现
+            director_list,  # 导演信息
+            author_list,  # 编剧信息
+            actor_list,  # 演员信息
+        )
+
+    # 保存电影的数据到psql
+    def save_to_sql(self, connect: object):
+        # 影片自身信息
+        cur_m = connect.cursor()
+        print(f'SQL: INSERT INTO\
+        {self.id},{self.title},{self.director},{self.author},{self.actor},{self.date_published})')
+        cur_m.execute(f"INSERT INTO movie \
+        (movie_id, movie_title, director, author, actor, submission_date) \
+        VALUES (\
+        '{self.id}',\
+        '{self.title}',\
+        '{self.director}',\
+        '{self.author}',\
+        '{self.actor}',\
+        '{self.date_published}')\
+        ON conflict(movie_id) do nothing;"
+                      )
+        cur_m.close()
+
 
 # 获取每个电影的信息 (多线程实现)
-def get_movie(link: list, hds: dict):
+def get_movie(link: list, hds: dict) -> None:
     """
     :param link: 链接列表 movie_list
     :param hds: 请求头 headers
@@ -154,8 +199,12 @@ def get_movie(link: list, hds: dict):
     """
     m = Movie(link.pop())
     m.get_data(hds)
-    m.save_data()
-    del m
+    persons: tuple[list] = m.save_data()
+    for person in persons:
+        for p in person:
+            p.save_to_sql(psql_conn)
+    m.save_to_sql(psql_conn)
+    del m, persons
 
 
 if __name__ == '__main__':
@@ -168,7 +217,6 @@ if __name__ == '__main__':
     html = etree.HTML(res.text)
     # 定位到电影到电影列表
     result = html.xpath('//*[@id="screening"]/div[2]/ul/li/ul/li[1]/a/@href')
-    # print(result)
 
     for url in result:
         movie_list.append(url.split('/')[4])
@@ -192,3 +240,5 @@ if __name__ == '__main__':
     for t in thread_list:
         # 等待线程结束
         t.join()
+
+    psql_test.close_db_connection(psql_conn)
