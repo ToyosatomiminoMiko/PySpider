@@ -82,9 +82,9 @@ class Person:
     def save_to_sql(self, connect: object):
         cur_p = connect.cursor()
         print(f'SQL: INSERT INTO ({self.id},{self.name})')
-        cur_p.execute(f"INSERT INTO person (person_id, name)\
+        cur_p.execute(f"INSERT INTO person (id, name)\
         VALUES ('{self.id}','{self.name}')\
-        ON conflict(person_id) do nothing;")
+        ON conflict(id) do nothing;")
         cur_p.close()
 
 
@@ -177,7 +177,7 @@ class Movie:
         print(f'SQL: INSERT INTO\
         {self.id},{self.title},{self.director},{self.author},{self.actor},{self.date_published})')
         cur_m.execute(f"INSERT INTO movie \
-        (movie_id, movie_title, director, author, actor, submission_date) \
+        (id, movie_title, director, author, actor, submission_date) \
         VALUES (\
         '{self.id}',\
         '{self.title}',\
@@ -185,7 +185,7 @@ class Movie:
         '{self.author}',\
         '{self.actor}',\
         '{self.date_published}')\
-        ON conflict(movie_id) do nothing;"
+        ON conflict(id) do nothing;"
                       )
         cur_m.close()
 
